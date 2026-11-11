@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>飾品成本計算</title>
+<style>
+:root{--bg:#faf7f4;--card:#fff;--ink:#2b2622;--mute:#8a8178;--line:#e8e1d9;--accent:#b5651d;--accent2:#f3e3d2;--ok:#2f7d4f}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1917;--card:#26211e;--ink:#f1ebe5;--mute:#a39a90;--line:#3a332e;--accent:#e0924f;--accent2:#3a2c20;--ok:#6fc28f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"PingFang TC","Noto Sans TC",sans-serif}
+header{padding:16px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:18px}
+nav{display:flex;gap:8px;margin-top:10px}
+nav button{flex:1;padding:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px}
+nav button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+main{max-width:980px;margin:0 auto;padding:16px}
+section{display:none}section.on{display:block}
+.pv{width:100%;max-width:360px;display:block;margin:10px 0 2px;border-radius:12px}
+.zoom{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:10px;cursor:zoom-out}
+.zoom img{max-width:min(92vw,700px);max-height:72vh;border-radius:12px;object-fit:contain;background:#222}
+.zoom .zi{color:#fff;text-align:center;font-size:15px;line-height:1.6}
+[data-zoom]{cursor:zoom-in}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+h2{font-size:16px;margin:0 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.item img{width:100%;height:130px;object-fit:cover;border-radius:8px;background:var(--accent2)}
+.item .ph{height:130px;border-radius:8px;background:var(--accent2);display:flex;align-items:center;justify-content:center;color:var(--mute)}
+label{display:block;font-size:12px;color:var(--mute);margin:6px 0 2px}
+input,select,textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}.row>*{flex:1;min-width:90px}
+button.b{padding:8px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer;font:inherit}
+button.b.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button.b.sm{padding:4px 10px;font-size:13px}
+button.b:disabled{opacity:.5;cursor:wait}
+.mute{color:var(--mute);font-size:13px}
+.strip{display:flex;flex-wrap:wrap;gap:3px;padding:10px;background:var(--accent2);border-radius:10px;min-height:44px}
+.bead{border-radius:50%;background:var(--accent);border:2px solid var(--card);overflow:hidden;flex:none}
+.bead img{width:100%;height:100%;object-fit:cover}
+.ring{position:relative;width:180px;height:180px;margin:auto}
+.ring .bead{position:absolute}
+table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;font-size:14px}
+th{color:var(--mute);font-weight:500;font-size:12px}
+.price{font-size:26px;color:var(--ok);font-weight:600}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;background:var(--accent2);color:var(--accent);font-size:12px}
+a{color:var(--accent)}
+ol{padding-left:20px;margin:6px 0}
+.warn{color:#c0392b;font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{display:flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;border:1px solid var(--line);border-radius:20px;background:var(--bg);color:var(--ink);cursor:pointer;font:inherit;font-size:13px}
+.chip:hover{border-color:var(--accent)}
+.chip img,.chip .dot{width:28px;height:28px;border-radius:50%;object-fit:cover;background:var(--accent2)}
+body.noai .ai{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>💎 飾品成本計算</h1>
+  <nav>
+    <button data-t="stock" class="on">貨品庫</button>
+    <button data-t="design">設計與報價</button>
+    <button data-t="set">設定</button>
+  </nav>
+</header>
+<main>
+
+<!-- 貨品庫 -->
+<section id="stock" class="on">
+  <div class="card">
+    <h2>新增貨品</h2>
+    <div class="row">
+      <div class="ai"><label>照片（可多張，AI 會幫你辨識）</label><input type="file" id="photoIn" accept="image/*" multiple></div>
+      <div class="ai" style="flex:0 0 auto"><button class="b" id="aiRecog">AI 辨識照片</button></div>
+      <div style="flex:0 0 auto"><button class="b ghost" id="addBlank">手動新增一筆</button></div>
+    </div>
+    <div class="mute ai" id="recogMsg" style="margin-top:6px">上傳整批貨的照片 → AI 列出每種墜飾/珠子與大小 → 你只要補上成本。</div>
+  </div>
+  <div class="card" id="stockSum"></div>
+  <div class="grid" id="itemGrid"></div>
+</section>
+
+<!-- 設計 -->
+<section id="design">
+  <div class="card ai">
+    <h2>AI 設計建議</h2>
+    <div class="row">
+      <div><label>要做的品類</label>
+        <select id="aiType"><option value="bracelet">手鍊</option><option value="ring">戒指</option><option value="necklace">項鍊</option><option value="earring">耳環</option></select></div>
+      <div><label>目標長度（cm，戒指填圍長，耳環填單邊垂長）</label><input type="number" id="aiLen" value="16"></div>
+      <div><label>風格/備註（選填）</label><input id="aiStyle" placeholder="例：簡約、可愛、日系"></div>
+      <div style="flex:0 0 auto"><button class="b" id="aiDesign">請 AI 設計</button></div>
+    </div>
+    <div class="mute" id="designMsg" style="margin-top:6px">AI 會依貨品庫現有的貨，提出組合、長度、串法步驟。</div>
+  </div>
+  <div class="card">
+    <h2>編織款設計建議（免費）</h2>
+    <div class="row">
+      <div><label>要做的品類</label>
+        <select id="sgType"><option value="bracelet">手鍊</option><option value="ring">戒指</option><option value="necklace">項鍊</option><option value="earring">耳環</option></select></div>
+      <div><label>長度（cm，戒指填圍長，耳環填單邊垂長）</label><input type="number" id="sgLen" value="16"></div>
+      <div style="flex:0 0 auto"><button class="b" id="suggest">產生編織設計</button></div>
+    </div>
+    <div class="mute" id="sgMsg" style="margin-top:6px">用你貨品庫的材料，套用米珠小花、蕾絲交叉編、立體山茶花、網格流蘇、多股混搭等編織花型，自動配色並算用量、成本、步驟。</div>
+  </div>
+  <div class="card">
+    <h2>照概念圖設計（免費）</h2>
+    <div class="row">
+      <div style="flex:2"><label>概念圖（你喜歡的飾品照片）</label><input type="file" id="cpIn" accept="image/*"></div>
+      <div><label>品類</label><select id="cpType"><option value="bracelet">手鍊</option><option value="ring">戒指</option><option value="necklace">項鍊</option><option value="earring">耳環</option></select></div>
+      <div><label>長度 cm</label><input type="number" id="cpLen" value="16"></div>
+    </div>
+    <div id="cpOut" class="mute" style="margin-top:6px">上傳一張你喜歡的飾品圖，網頁會抓出圖裡的主要顏色，配到你貨品庫最接近的材料，再把每種花型用這組配色畫出來。你挑最像的一款按「用這款」，就會加到下面的設計裡。</div>
+  </div>
+  <datalist id="itemList"></datalist>
+  <div class="card" id="designSum"></div>
+  <div id="designs"></div>
+  <button class="b ghost" id="newDesign">＋ 手動新增設計</button>
+</section>
+
+<!-- 設定 -->
+<section id="set">
+  <div class="card">
+    <h2>AI 功能（選填，要付費）</h2>
+    <input type="password" id="apiKey" placeholder="sk-ant-...">
+    <div class="mute"><b>不用 AI 的話這格留空就好</b>，所有計算功能都免費照常使用，AI 按鈕會自動隱藏。<br>要用 AI 才需要到 console.anthropic.com 申請 Claude API key（依用量付費）。key 只存在這台電腦的瀏覽器。</div>
+  </div>
+  <div class="card">
+    <h2>售價公式：材料成本 ÷（1 − 毛利率）＋ 工時</h2>
+    <div class="row">
+      <div><label>手鍊 毛利率（%）</label><input type="number" step="1" id="mBracelet"></div>
+      <div><label>戒指 毛利率（%）</label><input type="number" step="1" id="mRing"></div>
+      <div><label>項鍊 毛利率（%）</label><input type="number" step="1" id="mNecklace"></div>
+      <div><label>耳環 毛利率（%）</label><input type="number" step="1" id="mEarring"></div>
+    </div>
+    <div class="row">
+      <div><label>時薪（元／小時）</label><input type="number" id="wage"></div>
+      <div><label>每件包裝成本（元）</label><input type="number" id="labor"></div>
+      <div><label>線材/彈力線成本（每件，元）</label><input type="number" step="0.1" id="threadCost"></div>
+    </div>
+    <div class="mute">售價 =（材料 + 線材 + 配件 + 包裝）÷（1 − 毛利率）＋ 工時（小時 × 時薪）。工時不乘毛利。例：材料 100、毛利率 60%、工時 2 小時 × 100 → 250 + 200 = 450。</div>
+  </div>
+  <div class="card">
+    <h2>資料備份</h2>
+    <div class="row"><button class="b ghost" id="exp">匯出 JSON</button><input type="file" id="imp" accept=".json"></div>
+  </div>
+</section>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+const TYPE={bracelet:'手鍊',ring:'戒指',necklace:'項鍊',earring:'耳環'};
+const KEY='jewelry-calc-v1';
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+S=Object.assign({items:[],designs:[],set:{}},S||{});
+S.set=Object.assign({apiKey:'',mult:{bracelet:3,ring:3,necklace:3},labor:0,thread:2,wage:200},S.set);
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('儲存失敗：照片太多，請匯出備份並刪除部分貨品')}}
+const uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const N=v=>Number(v)||0;
+for(const d of S.designs){const L=d.seq.find(x=>x.role==='連接珠');if(!L)continue;
+  const A=d.seq.find(x=>x.role==='花瓣 A'||x.role==='小花瓣');
+  if(A){A.qty+=L.qty;A.role+='（含花間）'}d.seq=d.seq.filter(x=>x!==L);
+  d.desc=(d.desc||'').replace('用 2 顆米珠連接','用 2 顆同色米珠隔開');d.steps=(d.steps||[]).map(t=>t.replace(/連接珠/g,'花瓣 A 同色米珠'))}
+if(!S.set.margin){const m=S.set.mult,f=x=>Math.round((1-1/(N(x)||3))*100);S.set.margin={bracelet:f(m.bracelet),ring:f(m.ring),necklace:f(m.necklace)}}
+if(S.set.margin&&S.set.margin.earring==null)S.set.margin.earring=S.set.margin.necklace;save();
+function guessHours(d){
+  const p=PATTERNS.find(p=>p.key===d.pkey)||PATTERNS.find(p=>p.name.replace(/手鍊|項鍊/,TYPE[d.type])===d.name||p.name===d.name);
+  return p?Math.round(p.hours(N(d.lengthCm))*2)/2:0.5}
+const fmt=n=>(Math.round(n*100)/100).toLocaleString('zh-TW');
+
+// tabs
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button,section').forEach(e=>e.classList.remove('on'));
+  b.classList.add('on');$('#'+b.dataset.t).classList.add('on');
+});
+
+// image helpers
+function resize(file,max=640){return new Promise(res=>{
+  const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{
+    const k=Math.min(1,max/Math.max(im.width,im.height));
+    const c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;
+    c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.8));};im.src=r.result};r.readAsDataURL(file)})}
+
+// Claude
+async function claude(content,maxTokens=4000){
+  if(!S.set.apiKey)throw new Error('請先到「設定」填入 Claude API Key');
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{
+    'content-type':'application/json','x-api-key':S.set.apiKey,'anthropic-version':'2023-06-01',
+    'anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-5-5',max_tokens:maxTokens,messages:[{role:'user',content}]})});
+  const j=await r.json();
+  if(!r.ok)throw new Error(j.error?.message||r.status);
+  const t=j.content.map(c=>c.text||'').join('');
+  const m=t.match(/\{[\s\S]*\}/);
+  if(!m)throw new Error('AI 回傳格式錯誤');
+  return JSON.parse(m[0]);
+}
+const imgBlock=d=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:d.split(',')[1]}});
+
+// ===== 貨品庫 =====
+function renderStockSum(){
+  const lots=S.items.reduce((a,i)=>a+N(i.lot),0),noLot=S.items.filter(i=>!N(i.lot)).length;
+  $('#stockSum').innerHTML=`<h2>進貨總成本</h2><span class="price">${fmt(lots)} 元</span>
+  <div class="mute">共 ${S.items.length} 種材料，加總每項的「整批價」${noLot?`（有 ${noLot} 項沒填整批價，未計入）`:''}</div>`;
+}
+function renderItems(){
+  renderStockSum();
+  $('#itemGrid').innerHTML=S.items.map(it=>`
+  <div class="card item" data-id="${it.id}">
+    ${it.photo?`<img src="${it.photo}" data-zoom="${it.id}" style="cursor:zoom-in">`:`<div class="ph">無照片</div>`}
+    <label>名稱</label><input data-f="name" value="${esc(it.name)}">
+    <div class="row">
+      <div><label>尺寸 mm</label><input type="number" step="0.5" data-f="size" value="${it.size??''}"></div>
+      <div><label>每顆成本 元</label><input type="number" step="0.01" data-f="cost" value="${it.cost??''}"></div>
+    </div>
+    <div class="row">
+      <div><label>整批價（選填）</label><input type="number" data-f="lot" value="${it.lot??''}"></div>
+      <div><label>整批數量</label><input type="number" data-f="lotQty" value="${it.lotQty??''}"></div>
+    </div>
+    ${it.note?`<div class="mute">📝 ${esc(it.note)}</div>`:''}
+    <div class="mute">填整批價＋數量會自動算每顆成本</div>
+    <div class="row" style="margin-top:6px">
+      <input type="file" accept="image/*" data-photo style="font-size:12px">
+      <button class="b ghost sm" data-del style="flex:0 0 auto">刪除</button>
+    </div>
+  </div>`).join('')||'<div class="mute">還沒有貨品，先上傳照片或手動新增。</div>';
+}
+$('#itemGrid').addEventListener('input',e=>{
+  const card=e.target.closest('.item');if(!card||!e.target.dataset.f)return;
+  const it=S.items.find(x=>x.id===card.dataset.id),f=e.target.dataset.f;
+  it[f]=['name'].includes(f)?e.target.value:(e.target.value===''?'':N(e.target.value));
+  if((f==='lot'||f==='lotQty')&&N(it.lot)&&N(it.lotQty)){
+    it.cost=Math.round(N(it.lot)/N(it.lotQty)*1000)/1000;
+    card.querySelector('[data-f=cost]').value=it.cost;
+  }
+  save();renderStockSum();
+});
+$('#itemGrid').addEventListener('change',async e=>{
+  if(!e.target.hasAttribute('data-photo'))return;
+  const it=S.items.find(x=>x.id===e.target.closest('.item').dataset.id);
+  it.photo=await resize(e.target.files[0],400);delete it.big;save();renderItems();
+});
+$('#itemGrid').addEventListener('click',e=>{
+  if(!e.target.hasAttribute('data-del'))return;
+  if(!confirm('確定刪除？'))return;
+  const id=e.target.closest('.item').dataset.id;
+  S.items=S.items.filter(x=>x.id!==id);save();renderItems();
+});
+$('#addBlank').onclick=()=>{S.items.unshift({id:uid(),name:'材料'+(S.items.length+1),size:8,cost:0});save();renderItems()};
+$('#aiRecog').onclick=async()=>{
+  const files=[...$('#photoIn').files];if(!files.length)return alert('請先選照片');
+  const btn=$('#aiRecog');btn.disabled=true;$('#recogMsg').textContent='AI 辨識中…';
+  try{
+    const imgs=await Promise.all(files.map(f=>resize(f,1024)));
+    const out=await claude([...imgs.map(imgBlock),{type:'text',text:
+`這是一批飾品材料（墜飾、珠子、配件）的照片。請辨識每一種不同的零件，輸出 JSON：
+{"items":[{"name":"繁體中文名稱+顏色/材質","size_mm":預估直徑或長度(數字，毫米),"photo_index":該零件最清楚出現在第幾張圖(從0算),"count":照片中看到的大約數量}]}
+只輸出 JSON。大小是估計值，使用者會自己修正。`}]);
+    for(const o of out.items||[]){
+      S.items.unshift({id:uid(),name:o.name,size:N(o.size_mm),cost:0,photo:imgs[o.photo_index]||imgs[0],note:'約'+(o.count||'?')+'個'});
+    }
+    save();renderItems();$('#recogMsg').textContent=`辨識出 ${out.items?.length||0} 種，請補上成本並確認尺寸。`;
+  }catch(err){$('#recogMsg').innerHTML=`<span class="warn">${esc(err.message)}</span>`}
+  btn.disabled=false;
+};
+
+// ===== 設計 =====
+const itemOf=id=>S.items.find(x=>x.id===id);
+function calc(d){
+  const type=d.type;let mm=0,mat=0;
+  for(const s of d.seq){const it=itemOf(s.itemId);if(!it)continue;mm+=N(it.size)*N(s.qty);mat+=N(it.cost)*N(s.qty)}
+  const extra=(d.extras||[]).reduce((a,x)=>a+N(x.cost),0);
+  const work=N(d.hours)*N(S.set.wage);
+  const cost=mat+extra+N(S.set.thread)+N(S.set.labor)+work;
+  const g=Math.min(N((S.set.margin||{})[type]),95)/100;
+  const price=(cost-work)/(1-g)+work;
+  return {mm,mat,extra,work,cost,price};
+}
+// ===== 成品示意圖（依材料顏色自動畫） =====
+const CMAP=[[/紫紅/,'#8e2c5c'],[/灰藍/,'#6f8aa3'],[/蔚藍/,'#3d8fd1'],[/金/,'#d4a93a'],[/透明|透色/,'#dfe8ee'],[/米白|白/,'#f3eee2'],[/橄欖/,'#8c8f3c'],[/綠/,'#3f8f5a'],[/藍/,'#4a78c2'],[/粉/,'#efa7bd'],[/紅|橘|🍊/,'#e0703a'],[/深琥珀|（深）/,'#8a4313'],[/淺琥/,'#d99a4e'],[/琥/,'#b8661e'],[/香檳/,'#e6cc9c'],[/珍珠|pearl/i,'#f7f2e8'],[/銀/,'#c9ccd1']];
+function colOf(it){if(!it)return '#c8b9d6';for(const [r,c] of CMAP)if(r.test(it.name))return c;return '#c8b9d6'}
+function shade(h,f){const n=parseInt(h.slice(1),16),k=v=>Math.max(0,Math.min(255,Math.round(v*f)));return '#'+((1<<24)+(k(n>>16)<<16)+(k(n>>8&255)<<8)+k(n&255)).toString(16).slice(1)}
+const F1=v=>(+v).toFixed(1);
+const bead=(x,y,r,c)=>`<circle cx="${F1(x)}" cy="${F1(y)}" r="${F1(r)}" fill="${c}" stroke="${shade(c,.68)}" stroke-width="${Math.max(.35,r*.16).toFixed(2)}"/>`+(r>=2.4?`<circle cx="${F1(x-r*.35)}" cy="${F1(y-r*.35)}" r="${F1(r*.28)}" fill="#fff" opacity=".55"/>`:'');
+const drop=(x,y,r,c)=>`<path d="M${F1(x)} ${F1(y-r*1.7)}C${F1(x+r*1.2)} ${F1(y-r*.2)} ${F1(x+r)} ${F1(y+r)} ${F1(x)} ${F1(y+r)}C${F1(x-r)} ${F1(y+r)} ${F1(x-r*1.2)} ${F1(y-r*.2)} ${F1(x)} ${F1(y-r*1.7)}Z" fill="${c}" stroke="${shade(c,.65)}" stroke-width=".6"/><circle cx="${F1(x-r*.3)}" cy="${F1(y)}" r="${F1(r*.25)}" fill="#fff" opacity=".5"/>`;
+function flower(x,y,r,pc,cc,n=6,rot=0){let s='';for(let i=0;i<n;i++){const a=rot+i*2*Math.PI/n;s+=bead(x+Math.cos(a)*r,y+Math.sin(a)*r,r*.62,pc)}return s+bead(x,y,r*.55,cc)}
+function camellia(x,y,R,c,cc){let s='';[[1,9],[.72,7],[.45,5]].forEach(([k,n],L)=>{const col=shade(c,1-L*.1);for(let i=0;i<n;i++){const a=i*2*Math.PI/n+L*.4,px=x+Math.cos(a)*R*k*.55,py=y+Math.sin(a)*R*k*.55;s+=`<ellipse cx="${F1(px)}" cy="${F1(py)}" rx="${F1(R*k*.42)}" ry="${F1(R*k*.3)}" transform="rotate(${F1(a*180/Math.PI)} ${F1(px)} ${F1(py)})" fill="${col}" stroke="${shade(c,.62)}" stroke-width=".5"/>`}});for(let i=0;i<5;i++){const a=i*2*Math.PI/5;s+=bead(x+Math.cos(a)*R*.12,y+Math.sin(a)*R*.12,R*.08,cc)}return s}
+const leaf=(x,y,r,a,c)=>`<ellipse cx="${F1(x)}" cy="${F1(y)}" rx="${F1(r)}" ry="${F1(r*.45)}" transform="rotate(${F1(a)} ${F1(x)} ${F1(y)})" fill="${c}" stroke="${shade(c,.6)}" stroke-width=".6"/>`;
+function mkPath(fn,sign=1,N=240){const pts=[];for(let i=0;i<=N;i++)pts.push(fn(i/N));const L=[0];for(let i=1;i<pts.length;i++)L.push(L[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y));const tot=L[L.length-1];
+  return {len:tot,at(u){u=Math.max(0,Math.min(1,u));const dd=u*tot;let i=L.findIndex(v=>v>=dd);if(i<=0)i=1;const a=pts[i-1],b=pts[i],f=(dd-L[i-1])/((L[i]-L[i-1])||1),tx=b.x-a.x,ty=b.y-a.y,m=Math.hypot(tx,ty)||1;
+    return {x:a.x+tx*f,y:a.y+ty*f,nx:sign*ty/m,ny:-sign*tx/m}}}}
+const circleP=(cx,cy,R)=>mkPath(t=>({x:cx+R*Math.cos(2*Math.PI*t),y:cy+R*Math.sin(2*Math.PI*t)}));
+const neckP=(rx,ry,top=16)=>mkPath(t=>{const th=Math.PI*(1-t);return {x:150+rx*Math.cos(th),y:top+ry*Math.sin(th)}},-1);
+const off=(p,k)=>({x:p.x+p.nx*k,y:p.y+p.ny*k});
+function rcol(d,...names){for(const n of names){const s=d.seq.find(x=>(x.role||'').startsWith(n));if(s)return colOf(itemOf(s.itemId))}return null}
+function findPat(d){return PATTERNS.find(p=>p.key===d.pkey)||PATTERNS.find(p=>p.name.replace(/手鍊|項鍊/,TYPE[d.type])===d.name||p.name===d.name)}
+const clasp=P=>{const a=P.at(0),b=P.at(1);return `<circle cx="${F1(a.x)}" cy="${F1(a.y-3)}" r="3.2" fill="none" stroke="#b9bcc2" stroke-width="1.4"/><circle cx="${F1(b.x)}" cy="${F1(b.y-3)}" r="3.2" fill="none" stroke="#b9bcc2" stroke-width="1.4"/>`};
+const hook=x=>`<path d="M${x-7} 38Q${x-11} 8 ${x} 10Q${x+10} 12 ${x+6} 30" fill="none" stroke="#b9bcc2" stroke-width="1.6" stroke-linecap="round"/><circle cx="${x}" cy="42" r="3" fill="none" stroke="#b9bcc2" stroke-width="1.3"/>`;
+function chainFlowers(P,d,closed,{r=6,big=0}={}){
+  const A=rcol(d,'花瓣 A','花瓣（','小花瓣')||'#f3eee2',B=rcol(d,'花瓣 B')||A,C=rcol(d,'花心','小花心')||'#d4a93a',X=rcol(d,'大花花心')||'#dfe8ee',O=rcol(d,'大花外圈')||B;
+  const unit=r*3.7,n=Math.max(3,Math.floor(P.len/unit)),u0=closed?0:.03,span=closed?1:.94;let s='';
+  for(let i=0;i<n;i++){const u=u0+span*(i+.5)/n,p=P.at(u);
+    if(big&&i%3===1){for(let k=0;k<10;k++){const a=k*Math.PI/5;s+=bead(p.x+Math.cos(a)*r*1.35,p.y+Math.sin(a)*r*1.35,r*.42,O)}s+=bead(p.x,p.y,r*.85,X)}
+    else s+=flower(p.x,p.y,r,big?A:(i%2?B:A),C,6,i*.5);
+    if(closed||i<n-1){const um=u0+span*(i+1)/n;for(const dv of[-.28,.28]){const q=P.at(um+dv*r*1.1/P.len*2);s+=bead(q.x,q.y,r*.4,A)}}}
+  return s}
+function drawSimple(P,d,closed){let seq=[];d.seq.forEach(s=>{const it=itemOf(s.itemId);if(it&&N(it.size)>0)for(let k=0;k<Math.min(N(s.qty),60);k++)seq.push(it)});if(!seq.length)return '';
+  let s='',pos=closed?0:P.len*.03,i=0;const end=closed?P.len:P.len*.97;
+  while(pos<end&&i<600){const it=seq[i%seq.length],r=Math.max(1.6,N(it.size)*.55);const p=P.at((pos+r)/P.len);s+=/水滴|淚/.test(it.name)?drop(p.x+p.nx*r,p.y+p.ny*r,r*.8,colOf(it)):bead(p.x,p.y,r,colOf(it));pos+=r*2+.4;i++}
+  return s}
+function preview(d){try{
+  const pat=findPat(d),key=d.woven&&pat?pat.key:'simple',t=d.type;let s='';
+  const P=t==='bracelet'?circleP(150,100,70):t==='ring'?circleP(150,112,44):neckP(112,key==='netfringe'?92:key==='camellia'?118:132);
+  const closed=t!=='necklace',focusU=t==='necklace'?.5:.75;
+  if(t==='earring'){
+    for(const x of[95,205]){s+=hook(x);
+      if(key==='edaisy'){const A=rcol(d,'花瓣')||'#f3eee2',C=rcol(d,'花心')||'#d4a93a',D=rcol(d,'底部')||'#b8661e',n=Math.min(5,Math.max(3,Math.round(N(d.lengthCm)*.9)));let y=56;
+        for(let i=0;i<n;i++){s+=flower(x,y,6.5,A,C,6,i*.5);if(i<n-1){s+=bead(x,y+12,2.6,A)+bead(x,y+16.5,2.6,A)}y+=23}s+=drop(x,y+2,6,D)}
+      else if(key==='efringe'){const Pp=rcol(d,'頂部')||'#f7f2e8',A=rcol(d,'流蘇米珠 A')||'#4a78c2',B=rcol(d,'流蘇米珠 B')||'#d4a93a',T=rcol(d,'流蘇尾')||'#efa7bd';s+=bead(x,57,8,Pp);
+        [-12,-6,0,6,12].forEach((dx,i)=>{const len=Math.min(118,(60+30*(2-Math.abs(i-2)))*N(d.lengthCm)/4);const x2=x+dx*1.2,y2=66+len;
+          s+=`<line x1="${x+dx*.3}" y1="66" x2="${F1(x2)}" y2="${F1(y2)}" stroke="${i%2?B:A}" stroke-width="3.2" stroke-dasharray="2.4 .9" stroke-linecap="round"/>`+bead(x2,y2+3,3.4,T)})}
+      else {const A=rcol(d,'山茶花')||'#e0703a',C=rcol(d,'花心')||'#d4a93a',Pp=rcol(d,'垂墜')||'#f7f2e8';s+=camellia(x,68,20,A,C)+`<line x1="${x}" y1="88" x2="${x}" y2="122" stroke="#b9bcc2" stroke-width="1.2"/>`+bead(x,132,9,Pp)}}
+  }else if(key==='daisy'||key==='mixflower'){s+=chainFlowers(P,d,closed,{r:t==='ring'?4.6:key==='mixflower'?6.4:6,big:key==='mixflower'})}
+  else if(key==='lace'){const M=rcol(d,'交叉主珠')||'#f7f2e8',E=rcol(d,'邊緣')||'#f3eee2',F=rcol(d,'中間主花：米珠')||'#efa7bd',G=rcol(d,'中間主花：花心')||'#d4a93a',n=Math.floor(P.len/13);
+    for(let i=0;i<n;i++){const u=(closed?0:.03)+(closed?1:.94)*i/n,p=P.at(u),q=P.at(u+.5*(closed?1:.94)/n);s+=bead(p.x,p.y,3.6,M);if(closed||i<n-1){const a=off(q,6.5),b=off(q,-6.5);s+=bead(a.x,a.y,3.4,M)+bead(b.x,b.y,3.4,M);const e=off(q,11.5);s+=bead(e.x,e.y,1.8,E)}}
+    const f=P.at(focusU);s+=flower(f.x,f.y,9,F,G,8)+bead(f.x,f.y,4.5,G)}
+  else if(key==='camellia'){const S=rcol(d,'雙股')||'#f3eee2',Pp=rcol(d,'鍊上')||'#f7f2e8',A=rcol(d,'山茶花 A')||'#e0703a',B=rcol(d,'山茶花 B')||'#f3eee2',C=rcol(d,'花心')||'#d4a93a',Lf=rcol(d,'葉子')||'#3f8f5a',D=rcol(d,'垂墜')||'#b8661e',n=Math.floor(P.len/3.6);
+    for(let i=0;i<n;i++){const u=(closed?0:.03)+(closed?1:.94)*i/n,p=P.at(u);if(i%9===4){s+=bead(p.x,p.y,3.8,Pp)}else{const a=off(p,2.2),b=off(p,-2.2);s+=bead(a.x,a.y,1.5,S)+bead(b.x,b.y,1.5,S)}}
+    const du=t==='necklace'?.085:.07,f=P.at(focusU);
+    if(t==='necklace')for(let k=0;k<3;k++){const dd=P.at(focusU+(k-1)*du);const tip=off(dd,30+(k===1?10:0));s+=`<line x1="${F1(dd.x)}" y1="${F1(dd.y)}" x2="${F1(tip.x)}" y2="${F1(tip.y)}" stroke="#b9bcc2" stroke-width="1"/>`+drop(tip.x,tip.y+3,4.5,D)}
+    for(const k of[-1,1]){const g=P.at(focusU+k*du*1.7);s+=leaf(g.x,g.y,8,k*35,Lf)}
+    for(const k of[-1,1,0]){const g=P.at(focusU+k*du);s+=camellia(g.x,g.y,k?15:19,k?B:A,C)}}
+  else if(key==='netfringe'){const W=rcol(d,'網格米珠')||'#f3eee2',Gd=rcol(d,'網格交點')||'#d4a93a',FS=rcol(d,'流蘇米珠')||W,FP=rcol(d,'流蘇小花瓣')||W,FC=rcol(d,'流蘇花心')||Gd,Dc=rcol(d,'點綴')||'#dfe8ee';
+    const n=Math.floor(P.len/3.4);for(let i=0;i<n;i++){const p=P.at(.03+.94*i/n);s+=bead(p.x,p.y,1.5,W)}
+    const a0=.16,a1=.84,m=22,pts=[];for(let j=0;j<=m;j++)pts.push(P.at(a0+(a1-a0)*j/m));
+    for(let row=0;row<3;row++){let dd='';pts.forEach((p,j)=>{const q=off(p,7+row*8+((j+row)%2?6:0));dd+=(j?'L':'M')+F1(q.x)+' '+F1(q.y)});s+=`<path d="${dd}" fill="none" stroke="${W}" stroke-width="2.4" stroke-dasharray="2 .8"/>`;
+      pts.forEach((p,j)=>{if((j+row)%2){const q=off(p,7+row*8+6);s+=bead(q.x,q.y,1.9,Gd)}})}
+    pts.forEach((p,j)=>{if(j%2)return;const mid=1-Math.abs(j/m-.5)*2,L=12+mid*26+(j%4?0:6),a=off(p,30),b=off(p,30+L);
+      s+=`<line x1="${F1(a.x)}" y1="${F1(a.y)}" x2="${F1(b.x)}" y2="${F1(b.y)}" stroke="${FS}" stroke-width="2.4" stroke-dasharray="2 .8"/>`;const e=off(p,30+L+4);s+=(j%4?flower(e.x,e.y,3.3,FP,FC):drop(e.x,e.y,3.4,Dc))})}
+  else if(key==='multi'){const A=rcol(d,'打底米珠 A')||'#4a78c2',B=rcol(d,'打底米珠 B')||'#f3eee2',acc=d.seq.filter(x=>(x.role||'').startsWith('點綴珠')).map(x=>itemOf(x.itemId)).filter(Boolean);
+    const paths=t==='necklace'?[neckP(96,104),neckP(108,126),neckP(120,150)]:[circleP(150,100,58),circleP(150,100,70),circleP(150,100,82)];
+    paths.forEach((Pk,k)=>{const n=Math.floor(Pk.len/3.5);for(let i=0;i<n;i++){const u=(closed?0:.03)+(closed?1:.94)*i/n,p=Pk.at(u);
+      if(acc.length&&(i+k*5)%13===0){const it=acc[(i/13+k)%acc.length|0];const r=Math.max(3,Math.min(6,N(it.size)*.45));s+=/水滴|淚/.test(it.name)?drop(p.x+p.nx*r,p.y+p.ny*r,r*.8,colOf(it)):bead(p.x,p.y,r,colOf(it))}
+      else s+=bead(p.x,p.y,1.6,k===1?B:A)}});if(t==='necklace')s+=clasp(paths[2])}
+  else if(key==='ringflower'){const W=rcol(d,'戒圈')||'#f3eee2',F=rcol(d,'小花花瓣')||'#efa7bd',G=rcol(d,'花心')||'#d4a93a',X=rcol(d,'點綴水晶')||'#dfe8ee',n=Math.floor(P.len/4.4);
+    for(let i=0;i<n;i++){const p=P.at(i/n);s+=bead(p.x,p.y,2.1,W)}const f=P.at(.75),g=P.at(.75+.075);s+=flower(f.x,f.y,8,F,G,8)+bead(f.x,f.y,3.6,G)+bead(g.x,g.y,4.6,X)}
+  else s+=drawSimple(P,d,closed);
+  if(t==='necklace'&&key!=='multi')s+=clasp(P);
+  return `<svg class="pv" viewBox="0 0 300 200" role="img" aria-label="成品示意圖"><rect width="300" height="200" rx="12" fill="#faf6f0"/>${s}</svg><div class="mute" style="font-size:12px">成品示意圖（依材料顏色自動畫，非照片）</div>`;
+}catch(e){console.warn(e);return ''}}
+
+function viz(d){
+  if(d.woven||!d.pattern&&d.seq.length>2){
+    return `<div class="chips">${d.seq.map(s=>{const it=itemOf(s.itemId);if(!it)return'';
+      return `<span class="chip" data-zoom="${it.id}" title="點我看大圖">${it.photo?`<img src="${it.photo}">`:'<span class="dot"></span>'}${esc(s.role||it.name)} ×${s.qty}</span>`}).join('')||'<span class="mute">尚未選料</span>'}</div>`;
+  }
+  const beads=[];
+  const groups=d.seq.map(s=>({it:itemOf(s.itemId),n:Math.min(N(s.qty),60)})).filter(g=>g.it);
+  if(d.pattern==='alt'){
+    let left=true;while(left){left=false;for(const g of groups)if(g.n>0){beads.push(g.it);g.n--;left=true}}
+  }else groups.forEach(g=>{for(let i=0;i<g.n;i++)beads.push(g.it)});
+  const sz=it=>Math.max(14,Math.min(38,N(it.size)*3));
+  const mk=it=>`<div data-zoom="${it.id}" class="bead" style="width:${sz(it)}px;height:${sz(it)}px" title="${esc(it.name)}">${it.photo?`<img src="${it.photo}">`:''}</div>`;
+  return `<div class="strip">${beads.map(mk).join('')||'<span class="mute">尚未選料</span>'}</div>`;
+}
+const optLabel=x=>`${S.items.indexOf(x)+1}. ${esc(x.name)}（${x.size}mm・${fmt(N(x.cost))}元）`;
+const plainLabel=x=>`${x.name}（${x.size}mm）`;
+function renderDesigns(){
+  const all=S.designs.map(calc),tc=all.reduce((a,c)=>a+c.cost,0),tp=all.reduce((a,c)=>a+Math.round(c.price),0);
+  $('#designSum').style.display=S.designs.length?'':'none';
+  $('#designSum').innerHTML=`<h2>全部設計合計（各做 1 件）</h2>
+  <div class="row" style="align-items:flex-end">
+    <div><div class="mute">總成本</div><span class="price" style="color:var(--ink)">${fmt(tc)} 元</span></div>
+    <div><div class="mute">總售價</div><span class="price">${fmt(tp)} 元</span></div>
+    <div><div class="mute">預估利潤</div><span class="price">${fmt(tp-tc)} 元</span></div>
+  </div><div class="mute">共 ${S.designs.length} 款；不想算進去的款式按該款的「刪除此設計」。</div>`;
+  $('#itemList').innerHTML=S.items.map(x=>`<option value="${esc(plainLabel(x))}">`).join('');
+  $('#designs').innerHTML=S.designs.map(d=>{
+    const c=calc(d),target=N(d.lengthCm)*10,diff=c.mm-target;
+    const q=encodeURIComponent((d.keywords&&d.keywords[0])||(TYPE[d.type]+' 串珠 教學'));
+    return `<div class="card" data-id="${d.id}">
+    <div class="row">
+      <div style="flex:2"><label>設計名稱</label><input data-f="name" value="${esc(d.name)}"></div>
+      <div><label>品類</label><select data-f="type">${Object.entries(TYPE).map(([k,v])=>`<option value="${k}" ${d.type===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div><label>長度 cm</label><input type="number" data-f="lengthCm" value="${d.lengthCm}"></div>
+      <div><label>工時（小時）</label><input type="number" step="0.5" data-f="hours" value="${d.hours??0}"></div>
+    </div>
+    ${d.desc?`<div class="mute" style="margin-top:6px">${esc(d.desc)}</div>`:''}
+    ${d.concept?`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><img src="${d.concept}" style="width:150px;border-radius:12px;margin-top:10px;display:block"><div class="mute" style="font-size:12px">你的概念圖</div></div><div style="flex:1;min-width:220px">${preview(d)}</div></div>`:preview(d)}
+    <div style="margin:10px 0">${viz(d)}</div>
+    <div class="row" style="align-items:center">
+      <div>材料 ${fmt(c.mat)}　線材 ${fmt(N(S.set.thread))}　配件 ${fmt(c.extra)}${N(S.set.labor)?`　包裝 ${fmt(N(S.set.labor))}`:''}　工時 ${fmt(c.work)}<span class="mute">（${N(d.hours)} 小時 × ${N(S.set.wage)}）</span><br><b>成本 ${fmt(c.cost)} 元</b></div>
+      <div>（成本 − 工時）÷（1 − ${N((S.set.margin||{})[d.type])}%）＋ 工時 ${fmt(c.work)}<br><span class="price">建議售價 ${fmt(Math.round(c.price))} 元</span></div>
+    </div>
+    <details style="margin-top:10px"><summary class="mute" style="cursor:pointer">用料明細・串法步驟・教學影片</summary>
+    <table style="margin-top:8px"><tr><th>材料</th><th>單價</th><th>數量</th><th>小計</th><th></th></tr>
+    ${d.seq.map((s,i)=>{const it=itemOf(s.itemId);
+      return `<tr><td>${it&&it.photo?`<img src="${it.photo}" data-zoom="${it.id}" style="width:34px;height:34px;object-fit:cover;border-radius:6px;float:left;margin-right:6px;cursor:zoom-in">`:''}${s.role?`<div class="mute">${esc(s.role)}</div>`:''}<select data-seq="${i}" data-k="itemId">${S.items.map(x=>`<option value="${x.id}" ${x.id===s.itemId?'selected':''}>${optLabel(x)}</option>`).join('')}</select></td>
+      <td>${it?fmt(N(it.cost)):'-'}</td>
+      <td style="width:70px"><input type="number" data-seq="${i}" data-k="qty" value="${s.qty}"></td>
+      <td>${it?fmt(N(it.cost)*N(s.qty)):'-'}</td><td><button class="b ghost sm" data-rmseq="${i}">✕</button></td></tr>`}).join('')}
+    </table>
+    <label>加材料（輸入名稱，從清單選）</label><input list="itemList" data-addname placeholder="例如：MIYUKI、珍珠、琥珀">
+    ${d.woven?'<div class="mute" style="margin-top:6px">編織款：用量是依花型公式估算，已含約 10% 損耗。</div>':`<div class="mute" style="margin-top:6px">珠子總長 ${fmt(c.mm/10)} cm／目標 ${d.lengthCm} cm
+      ${Math.abs(diff)>5?`<span class="warn">（${diff>0?'超出':'不足'} ${fmt(Math.abs(diff)/10)} cm）</span>`:'<span style="color:var(--ok)">✓ 長度吻合</span>'}</div>`}
+    <label>其他配件（「名稱:價格」逗號分隔）</label>
+    <input data-extras value="${esc((d.extras||[]).map(x=>x.name+':'+x.cost).join(', '))}">
+    <h2 style="margin-top:12px">串法 <span class="tag">${esc(d.method||'未指定')}</span></h2>
+    ${d.steps?.length?`<ol>${d.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol>`:'<div class="mute">尚無步驟</div>'}
+    <div class="row" style="margin-top:6px;gap:12px;flex:none">
+      <a target="_blank" href="https://www.youtube.com/results?search_query=${q}">▶ YouTube 教學</a>
+      <a target="_blank" href="https://www.xiaohongshu.com/search_result?keyword=${q}">📕 小紅書</a>
+      <a target="_blank" href="https://search.bilibili.com/all?keyword=${q}">📺 Bilibili</a>
+      ${(d.keywords||[]).slice(1).map(k=>`<a target="_blank" href="https://www.youtube.com/results?search_query=${encodeURIComponent(k)}">${esc(k)}</a>`).join('')}
+    </div>
+    </details>
+    <div style="text-align:right;margin-top:8px"><button class="b ghost sm" data-deldesign>刪除此設計</button></div>
+    </div>`}).join('');
+}
+$('#designs').addEventListener('change',e=>{
+  const card=e.target.closest('.card');if(!card)return;
+  const d=S.designs.find(x=>x.id===card.dataset.id),t=e.target;
+  if(t.dataset.f==='type'){d.type=t.value;if(!d.woven)Object.assign(d,tpl(t.value,N(d.lengthCm)))}
+  else if(t.dataset.f)d[t.dataset.f]=t.type==='number'?N(t.value):t.value;
+  else if(t.dataset.seq!==undefined)d.seq[t.dataset.seq][t.dataset.k]=t.dataset.k==='qty'?N(t.value):t.value;
+  else if(t.hasAttribute('data-addname')){
+    const v=t.value.trim();if(!v)return;
+    const it=S.items.find(x=>plainLabel(x)===v)||S.items.find(x=>x.name.includes(v));
+    if(!it)return alert('找不到這個材料，請從清單選');
+    const ex=d.seq.find(x=>x.itemId===it.id);ex?ex.qty=N(ex.qty)+1:d.seq.push({itemId:it.id,qty:1});
+  }
+  else if(t.hasAttribute('data-extras'))d.extras=t.value.split(/[,，]/).map(s=>s.trim()).filter(Boolean).map(s=>{const [n,c]=s.split(/[:：]/);return{name:n,cost:N(c)}});
+  save();renderDesigns();
+  if(t.hasAttribute('data-addname'))document.querySelector(`.card[data-id="${d.id}"] details`).open=true;
+});
+$('#designs').addEventListener('click',e=>{
+  const card=e.target.closest('.card');if(!card)return;
+  const d=S.designs.find(x=>x.id===card.dataset.id),t=e.target;
+  if(t.dataset.rmseq!==undefined)d.seq.splice(t.dataset.rmseq,1);
+  else if(t.hasAttribute('data-deldesign')){if(!confirm('刪除此設計？'))return;S.designs=S.designs.filter(x=>x!==d)}
+  else return;
+  save();renderDesigns();
+  if(t.dataset.rmseq!==undefined)document.querySelector(`.card[data-id="${d.id}"] details`).open=true;
+});
+$('#newDesign').onclick=()=>{S.designs.unshift({id:uid(),name:'新設計',lengthCm:16,seq:[],...tpl('bracelet',16)});save();renderDesigns()};
+
+// ===== 免費自動建議 =====
+function tpl(type,len){
+  const T={
+    bracelet:{method:'彈力線手鍊',extras:[],keywords:['彈力線手鍊 打結 教學','串珠手鍊 教學'],steps:[
+      `剪 0.8mm 彈力線約 ${len+10} cm，先把線拉一拉預先拉伸，戴久比較不會鬆`,
+      '一端夾上長尾夾或膠帶，避免珠子掉出來',
+      '依照上方預覽的順序串珠',
+      '串完繞在手腕上試戴，長度不對就增減珠子',
+      '打「外科結」兩到三次並拉緊，結上點一滴 G-S 膠或快乾膠',
+      '膠乾後剪掉多餘的線，把結藏進旁邊大孔的珠子裡']},
+    ring:{method:'串珠戒指',extras:[],keywords:['串珠戒指 教學','彈力線戒指 做法'],steps:[
+      '剪 0.5～0.6mm 彈力線（或魚線）約 15 cm',
+      '依照上方預覽的順序串珠',
+      '繞在手指上試戴，調整到剛好的圍長',
+      '打外科結兩次，結上點膠',
+      '膠乾後剪線，把結藏進珠孔']},
+    earring:{method:'耳勾垂墜耳環',extras:[],keywords:['串珠 耳環 教學','耳勾 T針 做法'],steps:[
+      '用 T 針（或 9 針）依照上方順序穿珠',
+      '尾端用圓嘴鉗彎成小圈，多餘的針剪掉',
+      '用扣環把小圈接到耳勾上',
+      '另一邊照做，兩邊對稱']},
+    necklace:{method:'鋼絲線項鍊（定位珠＋龍蝦扣）',extras:[{name:'龍蝦扣+延長鏈',cost:5},{name:'定位珠x2',cost:1}],keywords:['串珠項鍊 定位珠 龍蝦扣 教學','包膠鋼絲 項鍊 做法'],steps:[
+      `剪 0.38mm 包膠鋼絲線約 ${len+10} cm`,
+      '一端穿定位珠，再穿過龍蝦扣的環，線繞回穿過定位珠',
+      '用夾線鉗把定位珠壓扁固定，剪掉多餘的短線',
+      '依照上方預覽的順序串珠',
+      '另一端同樣穿定位珠＋延長鏈，拉緊後壓扁定位珠',
+      '剪掉多餘的線，可加定位珠蓋讓收尾更漂亮']}
+  };
+  return {type,...structuredClone(T[type])};
+}
+// 編織款花型庫：依貨品庫材料自動配色、依公式算用量
+function pools(){
+  const metal=/花托|配件|彎管|吊飾|扣|針|鍊/;
+  const it=S.items.filter(i=>N(i.size)>0&&!metal.test(i.name));
+  const by=f=>it.filter(f);
+  const gold=by(i=>/金|gold/i.test(i.name)&&i.size<=3);
+  return {
+    seed:by(i=>i.size<=3),
+    color:by(i=>i.size<=3&&!gold.includes(i)),
+    small:by(i=>i.size>3&&i.size<=8),
+    crystal:by(i=>i.size>3&&i.size<=13&&/水晶|琥珀|琥|淚|肥皂|圓片|扭珠|冰裂|玻璃/.test(i.name)),
+    big:by(i=>i.size>8&&i.size<15),
+    focal:by(i=>i.size>=15),
+    pearl:by(i=>/珍珠|pearl/i.test(i.name)),
+    gold,
+    white:by(i=>/白|透明|米白/.test(i.name)&&i.size<=3)
+  };
+}
+const pick=(arr,k,...fb)=>{for(const a of [arr,...fb])if(a&&a.length)return a[((k%a.length)+a.length)%a.length];return null};
+const WASTE=1.1;
+function build(seq,role,item,qty){
+  if(!item||qty<=0)return;
+  qty=Math.ceil(qty*WASTE);
+  const ex=seq.find(s=>s.itemId===item.id&&s.role===role);
+  ex?ex.qty+=qty:seq.push({itemId:item.id,role,qty});
+}
+const PATTERNS=[
+  {key:'daisy',hours:len=>Math.max(0.5,len/8),name:'米珠小雛菊花鍊',types:['bracelet','necklace','ring'],
+   desc:'一朵接一朵的米珠小花（6 瓣＋花心），花與花之間用 2 顆同色米珠隔開，不需要另外買連接珠。',
+   make(len,P,v){const seq=[],f=Math.round(len*10/9);
+     const a=pick(P.white,v,P.color),b=pick(P.color,v+1),c=pick(P.gold,v,P.seed);
+     build(seq,'花瓣 A（含花間）',a,6*Math.ceil(f/2)+2*f);build(seq,'花瓣 B',b,6*Math.floor(f/2));
+     build(seq,'花心',c,f);return seq},
+   method:'雛菊鍊（Daisy chain）',keywords:['米珠 小雛菊 手鍊 教學','daisy chain bracelet tutorial'],
+   steps:len=>[`剪魚線或 0.3mm 米珠線約 ${len*3+20} cm（編織款用線量約長度的 3 倍）`,
+     '先穿 2 顆花瓣 A 同色米珠，再穿 6 顆花瓣珠，線從第 1 顆花瓣珠穿回成一個圈',
+     '穿 1 顆花心珠，跳到第 4 顆花瓣珠穿過去，拉緊就是一朵花',
+     '再穿 2 顆花瓣 A 同色米珠，重複做下一朵，兩種花瓣顏色交替',
+     '到需要的長度後裝扣頭（手鍊／項鍊）或首尾相連（戒指），線尾回穿 2～3 顆珠後點膠剪掉']},
+  {key:'mixflower',hours:len=>len/6,name:'大小花交錯手鍊',types:['bracelet','necklace'],
+   desc:'小雛菊之間每隔兩朵放一朵「水晶花心大花」，像參考圖的黃色花，層次更豐富。',
+   make(len,P,v){const seq=[],f=Math.round(len*10/10),big=Math.floor(f/3),sm=f-big;
+     build(seq,'小花瓣（含花間）',pick(P.white,v,P.color),6*sm+2*f);build(seq,'小花心',pick(P.gold,v,P.seed),sm);
+     build(seq,'大花花心水晶',pick(P.crystal,v,P.small),big);build(seq,'大花外圈米珠',pick(P.color,v+1),10*big);return seq},
+   method:'雛菊鍊＋包水晶大花',keywords:['米珠 花朵 水晶 手鍊 教學','beaded flower bracelet crystal center'],
+   steps:len=>[`剪米珠線約 ${len*3+20} cm`,
+     '小花照雛菊鍊做法：6 瓣＋1 花心',
+     '每做兩朵小花，做一朵大花：先穿 1 顆水晶當花心，外圈穿 10 顆米珠繞水晶一圈，線再從頭穿過收緊',
+     '花和花之間各用 2 顆小花瓣同色米珠隔開',
+     '收尾裝扣頭，線尾回穿點膠']},
+  {key:'lace',hours:len=>len/6+0.5,name:'珍珠蕾絲交叉編',types:['bracelet','necklace'],
+   desc:'雙線交叉編（十字編）做出像蕾絲的鏤空鍊身，參考圖中間那條，可在中間加一朵主花。',
+   make(len,P,v){const seq=[],u=Math.round(len*10/7);
+     build(seq,'交叉主珠',pick(P.pearl.filter(i=>i.size<=8),v,P.white,P.color),3*u);
+     build(seq,'邊緣小米珠',pick(P.white,v,P.seed),2*u);
+     build(seq,'中間主花：米珠',pick(P.color,v+3),60);build(seq,'中間主花：花心',pick(P.gold,v,P.seed),7);return seq},
+   method:'十字編（雙針交叉編）',keywords:['珍珠 十字編 手鍊 教學','right angle weave pearl bracelet'],
+   steps:len=>[`剪魚線約 ${len*4+30} cm，兩端各穿一根米珠針（或兩端當針用）`,
+     '中間穿 4 顆主珠，一端線從第 4 顆反方向穿過，形成第一個十字',
+     '左右兩線各穿 1 顆主珠，再一起交叉穿過 1 顆主珠，重複形成鏤空格子',
+     '每格外側加 1 顆小米珠做蕾絲邊',
+     '中間位置縫上一朵立體米珠花（約 60 顆米珠＋7 顆金色花心）',
+     '兩端裝扣頭，線尾回穿點膠']},
+  {key:'camellia',hours:len=>3.5+len/15,name:'立體山茶花主花項鍊',types:['necklace','bracelet'],
+   desc:'2～3 朵立體米珠山茶花當主角，兩側是米珠＋珍珠的雙股鍊，下方垂珍珠和水滴墜。',
+   make(len,P,v){const seq=[],fl=3;
+     build(seq,'山茶花 A 花瓣',pick(P.color.filter(i=>!P.white.includes(i)),v,P.color),70*2);build(seq,'山茶花 B 花瓣',pick(P.white,v,P.color),70);
+     build(seq,'花心',pick(P.gold,v,P.seed),8*fl);build(seq,'葉子',pick(P.color.filter(i=>/綠/.test(i.name)),v,P.color),12*fl);
+     build(seq,'雙股鍊米珠',pick(P.white,v+1,P.color),Math.round(len*10/2.2)*2);
+     build(seq,'鍊上珍珠',pick(P.pearl,v,P.big,P.small),Math.round(len/2.5));
+     build(seq,'垂墜',pick(P.crystal.filter(i=>/水滴|淚/.test(i.name)),v,P.pearl,P.big),3);return seq},
+   method:'立體米珠花（磚形編／環形編）',keywords:['米珠 山茶花 教學','beaded camellia flower tutorial'],
+   steps:len=>['用米珠針＋米珠線，先做花心：8 顆金色米珠圍一圈',
+     '第一層花瓣：每片 5～6 顆米珠做小拱，繞花心 5 片',
+     '第二、三層花瓣逐層加大（每片多 2 顆），從背面縫到前一層',
+     '用綠色米珠做 2～4 片小葉子縫在花的兩側',
+     `鍊身：兩股各串約 ${Math.round(len*10/2.2)} 顆米珠，每 2.5 cm 夾一顆珍珠`,
+     '把花縫在鍊身中央，下方用 T 針做 2～3 條珍珠／水滴垂墜',
+     '兩端裝扣頭＋延長鏈']},
+  {key:'netfringe',hours:len=>len/5,name:'蕾絲網格小花流蘇項鍊',types:['necklace'],
+   desc:'米珠編成網格狀的領口，下緣垂一排長短不一的小花流蘇，參考你給的最後一張。',
+   make(len,P,v){const seq=[],fr=Math.round(len*0.45);
+     build(seq,'網格米珠',pick(P.white,v,P.seed),len*25);build(seq,'網格交點金珠',pick(P.gold,v,P.seed),len*4);
+     build(seq,'流蘇米珠',pick(P.white,v+1,P.seed),fr*20);build(seq,'流蘇小花瓣',pick(P.white,v+2,P.seed),fr*6);
+     build(seq,'流蘇花心',pick(P.gold,v+1,P.seed),fr);build(seq,'點綴小墜',pick(P.crystal,v,P.small),Math.round(fr/2));return seq},
+   method:'網編（Netting）＋流蘇',keywords:['米珠 網編 項鍊 流蘇 教學','beaded netting necklace fringe tutorial'],
+   steps:len=>[`剪米珠線約 ${len*6} cm（網編很吃線，可分段接線）`,
+     `第一排先串頸圈基底約 ${len} cm`,
+     '第二排起：每穿 5 顆白米珠＋1 顆金珠，回穿基底隔 4 顆的位置，形成菱形網格，共做 3～4 排',
+     `最下排每隔一格垂一條流蘇（共約 ${Math.round(len*0.45)} 條），長短交錯`,
+     '流蘇尾端做一朵 6 瓣小花，部分流蘇加小墜珠點綴',
+     '兩端裝扣頭＋延長鏈']},
+  {key:'multi',hours:len=>len*3/30+0.5,name:'多股混搭長項鍊',types:['necklace','bracelet'],
+   desc:'3 股長短不同的混珠鍊，米珠打底、每隔一段穿不同的水晶／玻璃珠，參考第三張。',
+   make(len,P,v){const seq=[],tot=len*3+15,acc=Math.round(tot/2.5);
+     build(seq,'打底米珠 A',pick(P.color,v),Math.round(tot*10*0.35/2.2));
+     build(seq,'打底米珠 B',pick(P.color,v+1),Math.round(tot*10*0.35/2.2));
+     const accs=[...new Set([pick(P.crystal,v),pick(P.crystal,v+1),pick(P.big,v),pick(P.crystal,v+2),pick(P.pearl,v)].filter(Boolean))];
+     accs.forEach((a,i)=>build(seq,`點綴珠 ${i+1}`,a,Math.ceil(acc/accs.length)));return seq},
+   method:'多股串珠（鋼絲線＋分線扣）',keywords:['多層 串珠 項鍊 教學','layered beaded necklace tutorial'],
+   steps:len=>[`剪 3 段 0.38mm 包膠鋼絲：${len+10}、${len+15}、${len+20} cm`,
+     '每股先穿定位珠固定在 3 孔分線扣（或同一個扣環）上',
+     '每股用米珠打底，每 2～3 cm 穿一顆點綴珠，三股的點綴位置錯開',
+     '三股長度各差約 5 cm，做出層次',
+     '另一端同樣用定位珠固定到扣頭上，壓扁收尾']},
+  {key:'ringflower',hours:len=>1,name:'米珠花朵戒指',types:['ring'],
+   desc:'細米珠戒圈，中間一朵立體小花或水晶，參考第一張下方兩個戒指。',
+   make(len,P,v){const seq=[];
+     build(seq,'戒圈米珠',pick(P.white,v,P.color),Math.round(len*10/2.2));
+     build(seq,'小花花瓣',pick(P.color,v+3),24);build(seq,'花心',pick(P.gold,v,P.seed),5);
+     build(seq,'點綴水晶',pick(P.crystal,v,P.small),1);return seq},
+   method:'米珠戒圈＋立體小花',keywords:['米珠 戒指 花 教學','seed bead flower ring tutorial'],
+   steps:len=>['剪 0.5mm 彈力線或米珠線約 40 cm',
+     `串約 ${Math.round(len*10/2.2)} 顆米珠做戒圈，繞手指確認圍長`,
+     '戒圈正中間做一朵小花：5 顆金色花心，外圍兩層花瓣（約 24 顆）',
+     '旁邊點綴一顆水晶',
+     '打結點膠，線尾回穿藏好']},
+  {key:'edaisy',hours:len=>1.5,name:'米珠小花垂墜耳環',types:['earring'],
+   desc:'每邊 3 朵米珠小花一路往下垂，最下面吊一顆水晶／水滴，一對。',
+   make(len,P,v){const seq=[],f=Math.max(2,Math.round(len*10/9))*2;
+     build(seq,'花瓣（含花間）',pick(P.white,v,P.color),6*f+2*f);build(seq,'花心',pick(P.gold,v,P.seed),f);
+     build(seq,'底部墜珠',pick(P.crystal.filter(i=>/水滴|淚/.test(i.name)),v,P.crystal,P.pearl),2);return seq},
+   method:'雛菊鍊垂墜＋耳勾',keywords:['米珠 小花 耳環 教學','daisy chain earrings tutorial'],
+   steps:len=>[`每邊剪米珠線約 ${Math.round(len*4+20)} cm`,
+     '先在線中間穿 1 顆墜珠當底，兩條線一起往上做小花（6 瓣＋花心）',
+     `往上做到約 ${len} cm，最頂端留 4～5 顆米珠繞成小圈`,
+     '小圈用扣環接上耳勾，線尾回穿 2～3 顆後點膠剪掉',
+     '另一邊照做，兩邊花色對稱']},
+  {key:'efringe',hours:len=>2,name:'珍珠米珠流蘇耳環',types:['earring'],
+   desc:'珍珠在上，下面垂 5 條長短不一的米珠流蘇，尾端各一顆小珠，一對。',
+   make(len,P,v){const seq=[],per=Math.round(len*10/2.2);
+     build(seq,'頂部珍珠',pick(P.pearl,v,P.big,P.small),2);
+     build(seq,'流蘇米珠 A',pick(P.color,v),Math.round(per*3*0.85)*2);
+     build(seq,'流蘇米珠 B',pick(P.gold,v,P.seed),Math.round(per*2*0.85)*2);
+     build(seq,'流蘇尾珠',pick(P.crystal,v,P.small),10);return seq},
+   method:'米珠流蘇（Fringe）',keywords:['米珠 流蘇 耳環 教學','seed bead fringe earrings tutorial'],
+   steps:len=>['每邊用 T 針穿 1 顆珍珠，尾端彎圈',
+     `米珠線從珍珠下方的圈出發，串一條約 ${len} cm 的米珠流蘇，尾端穿 1 顆尾珠，跳過尾珠回穿上去`,
+     '共做 5 條，中間最長、兩側逐漸變短',
+     '流蘇頂端收在一起回穿點膠，用扣環接到珍珠圈下，上方接耳勾',
+     '另一邊照做']},
+  {key:'ecamellia',hours:len=>3,name:'立體山茶花耳環',types:['earring'],
+   desc:'每邊一朵立體米珠山茶花貼耳，下面垂一顆巴洛克珍珠，一對。',
+   make(len,P,v){const seq=[];
+     build(seq,'山茶花花瓣',pick(P.color.filter(i=>!P.white.includes(i)),v,P.color),70*2);
+     build(seq,'花心',pick(P.gold,v,P.seed),8*2);
+     build(seq,'垂墜珍珠',pick(P.pearl,v,P.big,P.crystal),2);return seq},
+   method:'立體米珠花＋垂墜',keywords:['米珠 山茶花 耳環 教學','beaded flower earrings tutorial'],
+   steps:len=>['先做花心：8 顆金色米珠圍一圈',
+     '第一層 5 片小花瓣，第二層 5 片大一點（每片多 2 顆），從背面縫到前一層',
+     '花背面縫上耳勾的環（或用扣環接）',
+     '花底部用 T 針吊一顆珍珠',
+     '另一邊照做']}
+];
+let sgRound=0;
+if(S.designs.some(d=>d.hours==null)){S.designs.forEach(d=>{if(d.hours==null)d.hours=guessHours(d)});save()}
+function suggest(type,len){
+  const P=pools(),v=sgRound++;
+  return PATTERNS.filter(p=>p.types.includes(type)).map(p=>makeOne(p,type,len,P,v)).filter(d=>d.seq.length);
+}
+function makeOne(p,type,len,P,v){
+  {
+    const seq=p.make(len,P,v);
+    const extras=type==='necklace'?[{name:'龍蝦扣+延長鏈（估價，可改）',cost:5}]:type==='bracelet'?[{name:'扣頭（估價，可改）',cost:3}]:[];
+    if(type==='earring'){const hw=S.items.find(i=>/耳/.test(i.name));hw?seq.push({itemId:hw.id,role:'耳勾/T針/扣環（一對）',qty:2}):extras.push({name:'耳勾一對（估價，可改）',cost:4})}
+    return {id:uid(),type,woven:true,pkey:p.key,hours:Math.round(p.hours(len)*2)/2,name:p.name.replace(/手鍊|項鍊/,TYPE[type]),desc:p.desc,lengthCm:len,seq,method:p.method,steps:p.steps(len),keywords:p.keywords,extras};
+  }
+}
+// ===== 照概念圖設計 =====
+const hex2rgb=h=>{const n=parseInt(h.slice(1),16);return [n>>16,n>>8&255,n&255]};
+const rgb2hex=c=>'#'+c.slice(0,3).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
+const cdist=(a,b)=>Math.sqrt(2*(a[0]-b[0])**2+4*(a[1]-b[1])**2+3*(a[2]-b[2])**2);
+function palette(img){
+  const W=90,H=Math.max(1,Math.round(90*img.height/img.width)),c=document.createElement('canvas');c.width=W;c.height=H;
+  const x=c.getContext('2d');x.drawImage(img,0,0,W,H);const d=x.getImageData(0,0,W,H).data;
+  const px=(i)=>[d[i],d[i+1],d[i+2]];
+  const edge=[];for(let X=0;X<W;X++){edge.push(px(X*4),px(((H-1)*W+X)*4))}for(let Y=0;Y<H;Y++){edge.push(px(Y*W*4),px((Y*W+W-1)*4))}
+  const eb={};edge.forEach(c=>{const k=c.map(v=>v>>5).join();(eb[k]=eb[k]||[]).push(c)});
+  const bgL=Object.values(eb).sort((a,b)=>b.length-a.length)[0],bg=[0,1,2].map(i=>bgL.reduce((a,c)=>a+c[i],0)/bgL.length);
+  const B={};for(let i=0;i<d.length;i+=4){const c=px(i);if(cdist(c,bg)<60)continue;{const mx=Math.max(...c),mn=Math.min(...c);if(mx<40||((mx-mn)/mx<.16&&mx<205))continue}const k=c.map(v=>v>>5).join();const o=B[k]=B[k]||{n:0,s:[0,0,0]};o.n++;c.forEach((v,j)=>o.s[j]+=v)}
+  const arr=Object.values(B).sort((a,b)=>b.n-a.n).map(o=>[...o.s.map(v=>v/o.n),o.n]);
+  const out=[];for(const c of arr){if(out.every(o=>cdist(o,c)>90))out.push(c);if(out.length>=6)break}
+  return out}
+function poolsFor(pal){
+  const P=pools(),gold=new Set(P.gold);
+  P.white=P.color=P.seed.filter(i=>!gold.has(i));
+  for(const k in P){const left=[...P[k]],ord=[];
+    for(const pc of pal){if(!left.length)break;let bi=0,bd=1e9;left.forEach((it,i)=>{const dd=cdist(hex2rgb(colOf(it)),pc);if(dd<bd){bd=dd;bi=i}});ord.push(left.splice(bi,1)[0])}
+    P[k]=[...ord,...left]}
+  return P}
+let CP=null;
+function renderConcept(){
+  if(!CP)return;const type=$('#cpType').value,len=N($('#cpLen').value)||16,P=poolsFor(CP.pal);
+  CP.cands=PATTERNS.filter(p=>p.types.includes(type)).map(p=>makeOne(p,type,len,P,0)).filter(d=>d.seq.length);
+  const match=CP.pal.map((c,i)=>{const it=P.color[i];return `<span class="chip" ${it?`data-zoom="${it.id}"`:''} style="cursor:${it?'zoom-in':'default'}"><span class="dot" style="background:${rgb2hex(c)};width:16px;height:16px;border-radius:50%;display:inline-block;border:1px solid var(--line)"></span>${it?'→ '+esc(it.name):''}</span>`}).join('');
+  $('#cpOut').innerHTML=`<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start"><img src="${CP.thumb}" style="width:140px;border-radius:12px">
+    <div style="flex:1;min-width:220px"><div class="mute">抓到的主要顏色 → 配到你最接近的米珠（點可看大圖）</div><div class="chips" style="margin-top:6px">${match}</div></div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:10px">${CP.cands.map((d,i)=>{const c=calc(d);
+      return `<div class="card" style="margin:0;padding:10px"><b>${esc(d.name)}</b>${preview(d).replace(/<div class="mute".*$/,'')}<div class="mute" style="font-size:13px">成本 ${fmt(Math.round(c.cost))}・售價 <b style="color:var(--accent)">${fmt(Math.round(c.price))}</b> 元</div><button class="b sm" data-usecp="${i}" style="margin-top:6px">用這款</button></div>`}).join('')}</div>
+    <div class="mute" style="margin-top:6px">都不像？換「品類」或「長度」看看，或換一張圖。</div>`;
+}
+$('#cpIn').onchange=async e=>{const f=e.target.files[0];if(!f)return;
+  if(!S.items.some(i=>N(i.size)>0))return alert('貨品庫還沒有材料（記得填尺寸）');
+  const url=await resize(f,700),thumb=await resize(f,240);const im=new Image();im.onload=()=>{CP={thumb,pal:palette(im)};renderConcept()};im.src=url};
+$('#cpType').onchange=()=>{$('#cpLen').value={bracelet:16,ring:5.5,necklace:42,earring:4}[$('#cpType').value];renderConcept()};
+$('#cpLen').onchange=renderConcept;
+$('#cpOut').addEventListener('click',e=>{const b=e.target.closest('[data-usecp]');if(!b||!CP)return;
+  const d=CP.cands[+b.dataset.usecp];d.concept=CP.thumb;d.name='概念款・'+d.name;S.designs.unshift(d);save();renderDesigns();
+  b.textContent='已加入 ✓';b.disabled=true;});
+$('#suggest').onclick=()=>{
+  const type=$('#sgType').value,len=N($('#sgLen').value);
+  if(!S.items.some(i=>N(i.size)>0))return alert('貨品庫還沒有材料（記得填尺寸）');
+  if(!len)return alert('請填長度');
+  const list=suggest(type,len);
+  S.designs=[...list,...S.designs];save();renderDesigns();
+  $('#sgMsg').textContent=`產生了 ${list.length} 款編織設計（在下方）。再按一次會換一組配色。`;
+};
+$('#sgType').onchange=()=>{$('#sgLen').value={bracelet:16,ring:5.5,necklace:42,earring:4}[$('#sgType').value]};
+$('#aiDesign').onclick=async()=>{
+  const usable=S.items.filter(i=>N(i.size)>0);
+  if(!usable.length)return alert('貨品庫沒有可用的貨');
+  const btn=$('#aiDesign');btn.disabled=true;$('#designMsg').textContent='AI 設計中…';
+  try{
+    const list=usable.slice(0,12);
+    const content=[];
+    list.forEach(i=>{if(i.photo)content.push(imgBlock(i.photo));content.push({type:'text',text:`↑ 貨品 id=${i.id}　名稱=${i.name}　尺寸=${i.size}mm　每顆成本=${i.cost}`})});
+    content.push({type:'text',text:
+`我要用以上貨品做「${TYPE[$('#aiType').value]}」，目標長度 ${$('#aiLen').value} cm（戒指為圍長），風格：${$('#aiStyle').value||'不限'}。
+請設計 2~3 款，只使用上面列出的 id。珠子數量×尺寸要接近目標長度。輸出 JSON：
+{"designs":[{"name":"款名","seq":[{"itemId":"id","qty":數量}],"method":"串法名稱","steps":["步驟1","步驟2"],"extras":[{"name":"配件名","cost":估價}],"keywords":["適合搜尋教學影片的關鍵字(中文)","第二個關鍵字"]}]}
+steps 請具體（例如：剪多長的彈力線、怎麼打結、順序）。只輸出 JSON。`});
+    const out=await claude(content,6000);
+    for(const d of out.designs||[]){
+      d.seq=(d.seq||[]).filter(s=>itemOf(s.itemId));
+      S.designs.unshift({id:uid(),type:$('#aiType').value,lengthCm:N($('#aiLen').value),extras:[],keywords:[],steps:[],...d});
+    }
+    save();renderDesigns();$('#designMsg').textContent=`已產生 ${out.designs?.length||0} 款，可直接調整數量，價格會即時重算。`;
+  }catch(err){$('#designMsg').innerHTML=`<span class="warn">${esc(err.message)}</span>`}
+  btn.disabled=false;
+};
+
+// ===== 設定 =====
+function syncAI(){document.body.classList.toggle('noai',!S.set.apiKey)}
+function loadSet(){
+  $('#apiKey').value=S.set.apiKey;$('#mBracelet').value=S.set.margin.bracelet;$('#mRing').value=S.set.margin.ring;
+  $('#mNecklace').value=S.set.margin.necklace;$('#mEarring').value=S.set.margin.earring;$('#labor').value=S.set.labor;$('#wage').value=S.set.wage;$('#threadCost').value=S.set.thread;
+}
+$('#set').addEventListener('input',()=>{
+  S.set.apiKey=$('#apiKey').value.trim();
+  S.set.margin={bracelet:N($('#mBracelet').value),ring:N($('#mRing').value),necklace:N($('#mNecklace').value),earring:N($('#mEarring').value)};
+  S.set.labor=N($('#labor').value);S.set.wage=N($('#wage').value);S.set.thread=N($('#threadCost').value);
+  save();syncAI();renderDesigns();
+});
+$('#exp').onclick=()=>{
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));
+  a.download='jewelry-backup.json';a.click();
+};
+$('#imp').onchange=async e=>{
+  try{
+    const j=JSON.parse(await e.target.files[0].text());
+    if(j.mergeItems){S.items.push(...j.mergeItems);save();alert(`已新增 ${j.mergeItems.length} 種材料`)}
+    else{S=j;save()}
+    loadSet();renderItems();renderDesigns();
+  }catch{alert('檔案格式錯誤')}
+};
+
+loadSet();syncAI();renderItems();renderDesigns();
+</script>
+<script>
+// 照片路徑（GitHub 版放在根目錄 ph-N.jpg）
+if(S.items.some(i=>i.big&&i.big.startsWith('photos/'))){S.items.forEach(i=>{if(i.big)i.big=i.big.replace('photos/','ph-')});save()}
+// 從舊網站（Netlify）搬資料過來
+window.addEventListener('message',e=>{
+  if(e.origin!=='https://celadon-bublanina-db6a25.netlify.app'||!e.data||!e.data.jcMove)return;
+  if(S.items.length&&!confirm('要用舊網站的資料取代這裡的資料嗎？'))return;
+  localStorage.setItem(KEY,e.data.jcMove);e.source&&e.source.postMessage({jcMoved:true},e.origin);location.reload();
+});
+document.addEventListener('click',e=>{
+  const z=e.target.closest('[data-zoom]');if(!z)return;
+  const it=S.items.find(x=>x.id===z.dataset.zoom);if(!it)return;
+  e.preventDefault();e.stopPropagation();
+  const src=it.big||it.photo;
+  const o=document.createElement('div');o.className='zoom';
+  o.innerHTML=(src?`<img src="${src}" onerror="if(this.src!=='${it.photo||''}')this.src='${it.photo||''}'">`:'<div class="zi">這個材料沒有照片</div>')+
+    `<div class="zi"><b>${esc(it.name)}</b><br>${N(it.size)?it.size+' mm　':''}每顆 ${fmt(N(it.cost))} 元${it.lot?`　整批 ${it.lot} 元／${it.lotQty} 顆`:''}${it.note?`<br><span style="opacity:.75">${esc(it.note)}</span>`:''}<br><span style="opacity:.6;font-size:13px">點任何地方關閉</span></div>`;
+  o.onclick=()=>o.remove();document.body.appendChild(o);
+},true);
+</script>
+</body>
+</html>
